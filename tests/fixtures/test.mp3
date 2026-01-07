@@ -1,0 +1,3 @@
+ID3
+This is a tiny test fixture (not a real MP3).
+It only exists to pass extension/magic-byte validation in automated tests.

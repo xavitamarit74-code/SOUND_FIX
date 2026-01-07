@@ -1,0 +1,22 @@
+{
+  "name": "sound-fix",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "start": "npm install && npm run dev",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@ffmpeg/core": "^0.12.6",
+    "@ffmpeg/core-mt": "^0.12.6",
+    "@ffmpeg/ffmpeg": "^0.12.10",
+    "@ffmpeg/util": "^0.12.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.1",
+    "vitest": "^2.1.8"
+  }
+}

@@ -1,0 +1,333 @@
+:root {
+  --primary: #f790b2;
+  --secondary: #4ecdc4;
+  --dark: #121212;
+  --light: #ffffff;
+  --gray: #333333;
+  --light-gray: #555555;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--dark);
+  color: var(--light);
+}
+
+/* Better readability on dark background (Bootstrap's text-muted is too low contrast here) */
+p {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.text-muted {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+.app__panel p,
+.app__panel .small,
+.app__panel small {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.app__brand {
+  font-weight: 700;
+  color: var(--primary) !important;
+}
+
+.app__panel {
+  background-color: var(--gray);
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.app__panel-title {
+  color: var(--secondary);
+  border-bottom: 1px solid var(--light-gray);
+  padding-bottom: 10px;
+  margin-bottom: 20px;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.btn-primary {
+  background-color: var(--primary);
+  border-color: var(--primary);
+}
+
+.btn-primary:hover {
+  background-color: #e680a2;
+  border-color: #e680a2;
+}
+
+.btn-secondary {
+  background-color: var(--secondary);
+  border-color: var(--secondary);
+}
+
+.btn-secondary:hover {
+  background-color: #3dbcb4;
+  border-color: #3dbcb4;
+}
+
+.btn-dark {
+  background-color: var(--light-gray);
+  border-color: var(--light-gray);
+}
+
+.uploader__dropzone {
+  border: 2px dashed var(--primary);
+  border-radius: 10px;
+  padding: 40px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.uploader__dropzone--active {
+  border-color: var(--secondary);
+}
+
+.uploader__dropzone i {
+  font-size: 50px;
+  color: var(--primary);
+}
+
+.uploader__details {
+  margin-top: 20px;
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 5px;
+  display: none;
+}
+
+.trimmer__timeline-container {
+  width: 100%;
+  position: relative;
+  padding: 20px 0;
+}
+
+.trimmer__timeline {
+  height: 80px;
+  background-color: #252525;
+  border-radius: 5px;
+  position: relative;
+  overflow: hidden;
+}
+
+.trimmer__waveform {
+  width: 100%;
+  height: 100%;
+  background-size: cover;
+  opacity: 0.7;
+}
+
+.trimmer__handles {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+}
+
+.trimmer__handle {
+  position: absolute;
+  width: 10px;
+  height: 100%;
+  background-color: var(--primary);
+  cursor: ew-resize;
+  top: 0;
+  z-index: 10;
+}
+
+.trimmer__handle--start {
+  left: 0;
+}
+
+.trimmer__handle--end {
+  right: 0;
+}
+
+.trimmer__selection {
+  position: absolute;
+  top: 0;
+  left: 10px;
+  right: 10px;
+  height: 100%;
+  background-color: rgba(79, 205, 196, 0.2);
+  pointer-events: none;
+}
+
+.trimmer__time-input {
+  width: 100px;
+}
+
+.eq__sliders {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  height: 200px;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.eq__slider-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 9%;
+  min-width: 56px;
+}
+
+@media (max-width: 768px) {
+  .eq__slider-container {
+    width: 18%;
+  }
+}
+
+.eq__slider {
+  width: 10px;
+  height: 150px;
+  appearance: slider-vertical;
+  -webkit-appearance: slider-vertical;
+  background-color: var(--light-gray);
+  outline: none;
+  margin: 10px 0;
+}
+
+.eq__label {
+  margin-top: 10px;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.eq__value {
+  font-size: 0.85rem;
+  color: var(--light);
+  opacity: 0.9;
+}
+
+.fade__slider {
+  width: 100%;
+  --range-progress: 0%;
+  height: 8px;
+  border-radius: 999px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: linear-gradient(
+    to right,
+    var(--secondary) 0%,
+    var(--secondary) var(--range-progress),
+    var(--light) var(--range-progress),
+    var(--light) 100%
+  );
+}
+
+/* WebKit (Chrome/Safari): make track transparent so input background (gradient) shows */
+.fade__slider::-webkit-slider-runnable-track {
+  height: 8px;
+  background: transparent;
+  border-radius: 999px;
+}
+
+.fade__slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--secondary);
+  border: 2px solid var(--light);
+  margin-top: -5px;
+}
+
+/* Firefox: native progress/track split */
+.fade__slider::-moz-range-track {
+  height: 8px;
+  background: var(--light);
+  border-radius: 999px;
+}
+
+.fade__slider::-moz-range-progress {
+  height: 8px;
+  background: var(--secondary);
+  border-radius: 999px;
+}
+
+.fade__slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--secondary);
+  border: 2px solid var(--light);
+}
+
+.loading {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  display: none;
+}
+
+.loading__progress {
+  width: 300px;
+  background-color: var(--gray);
+  padding: 20px;
+  border-radius: 10px;
+  text-align: center;
+}
+
+.loading__bar {
+  height: 10px;
+  background-color: var(--secondary);
+  width: 0;
+  border-radius: 5px;
+  transition: width 0.3s ease;
+}
+
+.loading__text {
+  margin-top: 10px;
+  font-size: 14px;
+  color: var(--light);
+}
+
+#player-container {
+  width: 100%;
+  margin-bottom: 15px;
+}
+
+#audio-player,
+#video-player {
+  width: 100%;
+  border-radius: 8px;
+  background-color: #252525;
+  display: none;
+}
+
+#video-player {
+  max-height: 300px;
+}
+
+.eq__preset {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+@media (max-width: 768px) {
+  .eq__sliders {
+    height: 150px;
+  }
+
+  .eq__slider {
+    height: 100px;
+  }
+}
