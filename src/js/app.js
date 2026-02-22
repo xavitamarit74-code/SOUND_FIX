@@ -6,9 +6,11 @@ import {
   parseTime,
   buildEqFilter,
   buildFadeFilter,
+  buildSeparationFilter,
   buildAudioCodecArgs,
   mimeFromExt,
-  parseDurationFromFfmpegLogs
+  parseDurationFromFfmpegLogs,
+  getSaveHandler
 } from './editorCore.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -76,6 +78,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const startTimeInput = document.getElementById('start-time');
   const endTimeInput = document.getElementById('end-time');
 
+  // Voice separation controls
+  const separationEnabled = document.getElementById('separation-enabled');
+  const separationOptions = document.getElementById('separation-options');
+  const separationModes = document.querySelectorAll('input[name="separation-mode"]');
+
   // Output format
   const outputFormat = document.getElementById('output-format');
 
@@ -140,7 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function handleFile(file) {
     const ok = await validateFile(file);
     if (!ok) {
-      notyf.error('Unsupported file format. Please upload an MP3, MP4, M4A, M4R, OGG, FLAC, or MOV file.');
+      notyf.error('Formato no soportado. Sube un archivo MP3, WAV, MP4, M4A, M4R, OGG, FLAC o MOV.');
       return;
     }
 
@@ -179,6 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     fileDetails.style.display = 'block';
     editorPanels.style.display = 'block';
+    updateCrossfadeUI();
 
     generateFakeWaveform();
 
@@ -200,7 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function handleFileB(file) {
     const ok = await validateFile(file);
     if (!ok) {
-      notyf.error('Unsupported file format for File B.');
+      notyf.error('Formato no soportado para el Archivo B.');
       return;
     }
 
@@ -217,14 +225,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
     const durationStr = totalDurationB > 0 ? formatTime(totalDurationB) : '-';
-    fileInfoB.textContent = `Size: ${fileSizeMB} MB | Duration: ${durationStr}`;
+    fileInfoB.textContent = `Tamaño: ${fileSizeMB} MB | Duración: ${durationStr}`;
     fileDetailsB.style.display = 'block';
   }
 
   function updateDurationDisplay() {
     const fileSizeMB = (currentFile.size / (1024 * 1024)).toFixed(2);
     const durationStr = formatTime(totalDuration);
-    fileInfo.textContent = `Size: ${fileSizeMB} MB | Duration: ${durationStr}`;
+    fileInfo.textContent = `Tamaño: ${fileSizeMB} MB | Duración: ${durationStr}`;
 
     endTime = totalDuration;
     startTime = 0;
@@ -375,7 +383,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const values = eqSliders.map(slider => slider.value);
     localStorage.setItem('customEqPreset', JSON.stringify(values));
     eqPreset.value = 'custom';
-    notyf.success('Custom preset saved');
+    notyf.success('Preset personalizado guardado');
   });
 
   function migrateEqArrayTo10(values) {
@@ -475,6 +483,12 @@ document.addEventListener('DOMContentLoaded', () => {
     saveSettings();
   });
 
+  separationEnabled.addEventListener('change', () => {
+    separationOptions.style.display = separationEnabled.checked ? 'block' : 'none';
+    saveSettings();
+  });
+  separationModes.forEach(r => r.addEventListener('change', saveSettings));
+
   fadeInValue.textContent = `${fadeInSlider.value}s`;
   fadeOutValue.textContent = `${fadeOutSlider.value}s`;
   crossfadeValue.textContent = `${crossfadeSlider.value}s`;
@@ -506,10 +520,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     startTime = 0;
     endTime = 0;
+    totalDuration = 0;
+    totalDurationB = 0;
     startTimeInput.value = '00:00';
     endTimeInput.value = '00:00';
 
-    notyf.success('Application reset successfully');
+    notyf.success('Aplicación reiniciada correctamente');
   }
 
   function updateCrossfadeUI() {
@@ -520,10 +536,16 @@ document.addEventListener('DOMContentLoaded', () => {
       fileDetailsB.style.display = 'none';
       currentFileB = null;
       fileInputB.value = '';
-      fileNameB.textContent = 'second-file.mp3';
-      fileInfoB.textContent = 'Size: - | Duration: -';
+      fileNameB.textContent = 'segundo-archivo.mp3';
+      fileInfoB.textContent = 'Tamaño: - | Duración: -';
       totalDurationB = 0;
     }
+  }
+
+  function getSeparationFilter() {
+    if (!separationEnabled.checked) return '';
+    const mode = [...separationModes].find(r => r.checked)?.value ?? 'vocal';
+    return buildSeparationFilter(mode);
   }
 
   function saveSettings() {
@@ -532,7 +554,9 @@ document.addEventListener('DOMContentLoaded', () => {
       fadeIn: fadeInSlider.value,
       fadeOut: fadeOutSlider.value,
       crossfade: crossfadeSlider.value,
-      outputFormat: outputFormat.value
+      outputFormat: outputFormat.value,
+      separationEnabled: separationEnabled.checked,
+      separationMode: [...separationModes].find(r => r.checked)?.value ?? 'vocal'
     };
 
     localStorage.setItem('audioEditorSettings', JSON.stringify(settings));
@@ -573,6 +597,15 @@ document.addEventListener('DOMContentLoaded', () => {
       if (settings.outputFormat) {
         outputFormat.value = settings.outputFormat;
       }
+
+      if (settings.separationEnabled) {
+        separationEnabled.checked = true;
+        separationOptions.style.display = 'block';
+      }
+      if (settings.separationMode) {
+        const radio = document.getElementById(`mode-${settings.separationMode}`);
+        if (radio) radio.checked = true;
+      }
     }
 
     updateCrossfadeUI();
@@ -598,13 +631,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       if (!currentFile) {
-        notyf.error('No file to preview. Please upload a file first.');
+        notyf.error('No hay archivo para previsualizar. Por favor sube un archivo primero.');
         return;
       }
 
       const cf = Number(crossfadeSlider.value);
       if (cf > 0 && !currentFileB) {
-        notyf.error('Preview aborted: Crossfade is enabled. Please choose File B.');
+        notyf.error('Vista previa cancelada: el Crossfade está activo. Por favor elige el Archivo B.');
         return;
       }
 
@@ -616,14 +649,14 @@ document.addEventListener('DOMContentLoaded', () => {
       clampTimes();
       const segDur = Math.max(0, endTime - startTime);
       if (segDur <= 0.01) {
-        notyf.error('Invalid trim range.');
+        notyf.error('Rango de recorte inválido.');
         return;
       }
 
       const fadeIn = Number(fadeInSlider.value);
       const fadeOut = Number(fadeOutSlider.value);
       if (fadeIn + fadeOut > segDur + 1e-6) {
-        notyf.error('Fade in/out is longer than the selected clip.');
+        notyf.error('El fundido de entrada/salida es más largo que el fragmento seleccionado.');
         return;
       }
 
@@ -632,11 +665,11 @@ document.addEventListener('DOMContentLoaded', () => {
           totalDurationB = await probeDurationSeconds(currentFileB, 'inputB');
         }
         if (!Number.isFinite(totalDurationB) || totalDurationB <= 0) {
-          notyf.error('Could not read duration for File B.');
+          notyf.error('No se pudo leer la duración del Archivo B.');
           return;
         }
         if (cf > segDur || cf > totalDurationB) {
-          notyf.error('Crossfade must be shorter than both clips.');
+          notyf.error('El Crossfade debe ser más corto que ambos clips.');
           return;
         }
       }
@@ -666,6 +699,7 @@ document.addEventListener('DOMContentLoaded', () => {
         await ffmpeg.writeFile('inputB', await fetchFile(currentFileB));
       }
 
+      const separationFilter = getSeparationFilter();
       const eqFilter = buildEqFilter({
         g31: eqSliders[0].value,
         g62: eqSliders[1].value,
@@ -684,8 +718,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const aTrim = `atrim=start=${startTime}:end=${endTime},asetpts=PTS-STARTPTS`;
         const bTrim = `atrim=start=0:end=${totalDurationB},asetpts=PTS-STARTPTS`;
 
-        const aChain = [aTrim, eqFilter].filter(Boolean).join(',');
-        const bChain = [bTrim, eqFilter].filter(Boolean).join(',');
+        const aChain = [aTrim, separationFilter, eqFilter].filter(Boolean).join(',');
+        const bChain = [bTrim, separationFilter, eqFilter].filter(Boolean).join(',');
 
         const post = [fadesFilter].filter(Boolean).join(',');
         const filterComplex = `
@@ -708,7 +742,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ]);
       } else {
         const trim = `atrim=start=${startTime}:end=${endTime},asetpts=PTS-STARTPTS`;
-        const af = [trim, eqFilter, fadesFilter].filter(Boolean).join(',');
+        const af = [trim, separationFilter, eqFilter, fadesFilter].filter(Boolean).join(',');
 
         await ffmpeg.exec([
           '-hide_banner',
@@ -743,10 +777,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Autoplay may be blocked; user can press play.
       }
 
-      notyf.success('Preview ready');
+      notyf.success('Vista previa lista');
     } catch (err) {
       console.error(err);
-      notyf.error('Preview failed. Try a smaller clip or check the dev server (COOP/COEP).');
+      notyf.error('Vista previa fallida. Prueba con un clip más corto o verifica el servidor de desarrollo.');
     } finally {
       loadingOverlay.style.display = 'none';
       setProgress(0);
@@ -757,15 +791,25 @@ document.addEventListener('DOMContentLoaded', () => {
   exportBtn.addEventListener('click', async () => {
     try {
       if (!currentFile) {
-        notyf.error('No file to export. Please upload a file first.');
+        notyf.error('No hay archivo para exportar. Por favor sube un archivo primero.');
         return;
       }
 
       const cf = Number(crossfadeSlider.value);
       if (cf > 0 && !currentFileB) {
-        notyf.error('Export aborted: Crossfade is enabled. Please choose File B.');
+        notyf.error('Exportación cancelada: el Crossfade está activo. Por favor elige el Archivo B.');
         return;
       }
+
+      const outExt = outputFormat.value;
+      const baseName = (currentFile.name || 'output').replace(/\.[^/.]+$/, '');
+      const outName = `${baseName}_editado.${outExt}`;
+
+      // Open save dialog FIRST — must be the first await so the user-gesture
+      // context is still active for showSaveFilePicker (Chrome/Edge).
+      // Returns null if the user cancelled, or a function to call with the blob.
+      const saveFile = await getSaveHandler(outName, mimeFromExt(outExt));
+      if (saveFile === null) return; // User cancelled the dialog
 
       if (!Number.isFinite(totalDuration) || totalDuration <= 0) {
         totalDuration = await probeDurationSeconds(currentFile, 'inputA');
@@ -775,14 +819,14 @@ document.addEventListener('DOMContentLoaded', () => {
       clampTimes();
       const segDur = Math.max(0, endTime - startTime);
       if (segDur <= 0.01) {
-        notyf.error('Invalid trim range.');
+        notyf.error('Rango de recorte inválido.');
         return;
       }
 
       const fadeIn = Number(fadeInSlider.value);
       const fadeOut = Number(fadeOutSlider.value);
       if (fadeIn + fadeOut > segDur + 1e-6) {
-        notyf.error('Fade in/out is longer than the selected clip.');
+        notyf.error('El fundido de entrada/salida es más largo que el fragmento seleccionado.');
         return;
       }
 
@@ -791,11 +835,11 @@ document.addEventListener('DOMContentLoaded', () => {
           totalDurationB = await probeDurationSeconds(currentFileB, 'inputB');
         }
         if (!Number.isFinite(totalDurationB) || totalDurationB <= 0) {
-          notyf.error('Could not read duration for File B.');
+          notyf.error('No se pudo leer la duración del Archivo B.');
           return;
         }
         if (cf > segDur || cf > totalDurationB) {
-          notyf.error('Crossfade must be shorter than both clips.');
+          notyf.error('El Crossfade debe ser más corto que ambos clips.');
           return;
         }
       }
@@ -812,10 +856,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
 
-      const outExt = outputFormat.value;
-      const baseName = (currentFile.name || 'output').replace(/\.[^/.]+$/, '');
-      const outName = `${baseName}_edited.${outExt}`;
-
       await safeUnlink('inputA');
       await safeUnlink('inputB');
       await safeUnlink(outName);
@@ -825,6 +865,7 @@ document.addEventListener('DOMContentLoaded', () => {
         await ffmpeg.writeFile('inputB', await fetchFile(currentFileB));
       }
 
+      const separationFilter = getSeparationFilter();
       const eqFilter = buildEqFilter({
         g31: eqSliders[0].value,
         g62: eqSliders[1].value,
@@ -843,8 +884,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const aTrim = `atrim=start=${startTime}:end=${endTime},asetpts=PTS-STARTPTS`;
         const bTrim = `atrim=start=0:end=${totalDurationB},asetpts=PTS-STARTPTS`;
 
-        const aChain = [aTrim, eqFilter].filter(Boolean).join(',');
-        const bChain = [bTrim, eqFilter].filter(Boolean).join(',');
+        const aChain = [aTrim, separationFilter, eqFilter].filter(Boolean).join(',');
+        const bChain = [bTrim, separationFilter, eqFilter].filter(Boolean).join(',');
 
         const post = [fadesFilter].filter(Boolean).join(',');
         const filterComplex = `
@@ -867,7 +908,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ]);
       } else {
         const trim = `atrim=start=${startTime}:end=${endTime},asetpts=PTS-STARTPTS`;
-        const af = [trim, eqFilter, fadesFilter].filter(Boolean).join(',');
+        const af = [trim, separationFilter, eqFilter, fadesFilter].filter(Boolean).join(',');
 
         await ffmpeg.exec([
           '-hide_banner',
@@ -882,12 +923,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const data = await ffmpeg.readFile(outName);
       const blob = new Blob([data.buffer], { type: mimeFromExt(outExt) });
-      downloadBlob(blob, outName);
+      await saveFile(blob);
 
-      notyf.success('File exported successfully!');
+      notyf.success('¡Archivo exportado correctamente!');
     } catch (err) {
       console.error(err);
-      notyf.error('Export failed. Try a smaller file or check the dev server (COOP/COEP).');
+      notyf.error('Exportación fallida. Prueba con un archivo más pequeño o verifica el servidor de desarrollo.');
     } finally {
       loadingOverlay.style.display = 'none';
       setProgress(0);
@@ -898,17 +939,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const p = Math.max(0, Math.min(100, Number(percent) || 0));
     progressBar.style.width = `${p}%`;
     progressText.textContent = `${p}%`;
-  }
-
-  function downloadBlob(blob, filename) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1500);
   }
 
   async function ensureFFmpeg() {
@@ -945,7 +975,7 @@ document.addEventListener('DOMContentLoaded', () => {
           await tryLoad('/node_modules/@ffmpeg/core-mt/dist/esm');
         } catch (e) {
           console.warn('FFmpeg MT load failed, falling back to single-thread.', e);
-          notyf.error('FFmpeg multi-thread unavailable. Falling back to compatibility mode.');
+          notyf.error('FFmpeg multi-hilo no disponible. Usando modo de compatibilidad.');
           await tryLoad('/node_modules/@ffmpeg/core/dist/esm');
         }
       } else {

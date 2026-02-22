@@ -4,6 +4,8 @@ import { test, expect } from '@playwright/test';
 const fixtureA = path.resolve(process.cwd(), 'tests/fixtures/test.mp3');
 
 test('carga archivo, habilita editor y exporta (mock ffmpeg)', async ({ page }) => {
+  // Force blob-URL fallback so Playwright can capture the download event
+  await page.addInitScript(() => { delete window.showSaveFilePicker; });
   await page.goto('/?mockFFmpeg=1');
 
   const fileInput = page.locator('#file-input');
@@ -27,10 +29,12 @@ test('carga archivo, habilita editor y exporta (mock ffmpeg)', async ({ page }) 
   await page.locator('#export-btn').click();
   const download = await downloadPromise;
 
-  expect(download.suggestedFilename()).toMatch(/_edited\.mp3$/);
+  expect(download.suggestedFilename()).toMatch(/_editado\.mp3$/);
 });
 
 test('crossfade requiere archivo B y exporta (mock ffmpeg)', async ({ page }) => {
+  // Force blob-URL fallback so Playwright can capture the download event
+  await page.addInitScript(() => { delete window.showSaveFilePicker; });
   await page.goto('/?mockFFmpeg=1');
 
   await page.locator('#file-input').setInputFiles(fixtureA);
@@ -47,7 +51,7 @@ test('crossfade requiere archivo B y exporta (mock ffmpeg)', async ({ page }) =>
   await page.locator('#export-btn').click();
   const download = await downloadPromise;
 
-  expect(download.suggestedFilename()).toMatch(/_edited\.m4a$/);
+  expect(download.suggestedFilename()).toMatch(/_editado\.m4a$/);
 });
 
 test('preview genera audio (mock ffmpeg) y refleja EQ/Fade', async ({ page }) => {
@@ -80,7 +84,7 @@ test('preview genera audio (mock ffmpeg) y refleja EQ/Fade', async ({ page }) =>
   await page.locator('#output-format').selectOption('m4a');
   await page.locator('#preview-btn').click();
 
-  await expect(page.getByText('Preview ready')).toBeVisible();
+  await expect(page.getByText('Vista previa lista')).toBeVisible();
   await expect(page.locator('#audio-player')).toBeVisible();
   await expect(page.locator('#video-player')).toBeHidden();
 
@@ -115,7 +119,7 @@ test('preview abortado con crossfade sin File B pausa reproductor', async ({ pag
 
   await page.locator('#preview-btn').click();
 
-  await expect(page.getByText('Preview aborted: Crossfade is enabled. Please choose File B.')).toBeVisible();
+  await expect(page.getByText('Vista previa cancelada: el Crossfade está activo. Por favor elige el Archivo B.')).toBeVisible();
 
   const pauseCount = await page.evaluate(() => window.__pauseCount);
   expect(pauseCount).toBeGreaterThan(0);

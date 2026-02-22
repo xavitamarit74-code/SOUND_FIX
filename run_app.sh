@@ -24,7 +24,42 @@ if [ ! -d "node_modules" ]; then
   npm install
 fi
 
-echo "Arrancando la aplicación en http://localhost:5173 ..."
+is_port_in_use() {
+  local port="$1"
+  lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+}
+
+pick_free_port() {
+  local start_port="$1"
+  local max_tries=50
+  local p="$start_port"
+
+  for _ in $(seq 0 "$max_tries"); do
+    if ! is_port_in_use "$p"; then
+      echo "$p"
+      return 0
+    fi
+    p=$((p + 1))
+  done
+
+  return 1
+}
+
+START_PORT="${PORT:-5173}"
+
+if is_port_in_use "$START_PORT"; then
+  echo "El puerto $START_PORT ya está en uso. Buscando un puerto libre..."
+  echo "Proceso actual en $START_PORT:"
+  lsof -nP -iTCP:"$START_PORT" -sTCP:LISTEN | head -n 5 || true
+fi
+
+PORT_TO_USE="$(pick_free_port "$START_PORT")" || {
+  echo "ERROR: No se encontró un puerto libre empezando en $START_PORT."
+  echo "Sugerencia: cierra el proceso que ocupa el puerto o define PORT=xxxx."
+  exit 1
+}
+
+echo "Arrancando la aplicación en http://localhost:${PORT_TO_USE} ..."
 # npm start ya incluye 'npm install && npm run dev' en este proyecto,
 # pero mantenemos el check anterior para hacerlo más rápido.
-exec npm run dev
+exec env PORT="$PORT_TO_USE" npm run dev

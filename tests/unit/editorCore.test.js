@@ -3,11 +3,25 @@ import {
   buildAudioCodecArgs,
   buildEqFilter,
   buildFadeFilter,
+  buildSeparationFilter,
   formatTime,
   mimeFromExt,
   parseDurationFromFfmpegLogs,
-  parseTime
+  parseTime,
+  validateFile
 } from '../../src/js/editorCore.js';
+
+// ── validateFile helpers ──────────────────────────────────────────────────────
+
+function makeFile(name, bytes = []) {
+  const data = new Uint8Array(bytes);
+  return {
+    name,
+    slice: (start, end) => ({
+      arrayBuffer: async () => data.slice(start, end).buffer
+    })
+  };
+}
 
 describe('editorCore', () => {
   test('formatTime', () => {
@@ -85,6 +99,7 @@ describe('editorCore', () => {
 
   test('buildAudioCodecArgs', () => {
     expect(buildAudioCodecArgs('mp3')).toEqual(['-c:a', 'libmp3lame', '-b:a', '192k', '-ar', '44100']);
+    expect(buildAudioCodecArgs('wav')).toEqual(['-c:a', 'pcm_s16le', '-ar', '44100']);
     expect(buildAudioCodecArgs('m4a')).toContain('aac');
     expect(buildAudioCodecArgs('mp4')).toContain('aac');
     expect(buildAudioCodecArgs('m4r')).toContain('aac');
@@ -92,6 +107,7 @@ describe('editorCore', () => {
 
   test('mimeFromExt', () => {
     expect(mimeFromExt('mp3')).toBe('audio/mpeg');
+    expect(mimeFromExt('wav')).toBe('audio/wav');
     expect(mimeFromExt('m4a')).toBe('audio/mp4');
     expect(mimeFromExt('mp4')).toBe('audio/mp4');
   });
@@ -99,5 +115,81 @@ describe('editorCore', () => {
   test('parseDurationFromFfmpegLogs', () => {
     const logs = 'Duration: 00:03:45.12, start: 0.000000, bitrate: 128 kb/s';
     expect(parseDurationFromFfmpegLogs(logs)).toBeCloseTo(225.12, 2);
+  });
+});
+
+// ── buildSeparationFilter ─────────────────────────────────────────────────────
+
+describe('buildSeparationFilter', () => {
+  test('returns empty string for unrecognised mode', () => {
+    expect(buildSeparationFilter('')).toBe('');
+    expect(buildSeparationFilter('none')).toBe('');
+  });
+
+  test('vocal mode produces mid-channel pan filter', () => {
+    const f = buildSeparationFilter('vocal');
+    expect(f).toContain('pan=stereo');
+    expect(f).toContain('0.5*c0+0.5*c1');
+  });
+
+  test('instrumental mode produces side-channel pan filter', () => {
+    const f = buildSeparationFilter('instrumental');
+    expect(f).toContain('pan=stereo');
+    expect(f).toContain('0.5*c0-0.5*c1');
+  });
+});
+
+// ── validateFile ──────────────────────────────────────────────────────────────
+
+describe('validateFile', () => {
+  test('accepts files with allowed extensions', async () => {
+    expect(await validateFile(makeFile('song.mp3'))).toBe(true);
+    expect(await validateFile(makeFile('audio.wav'))).toBe(true);
+    expect(await validateFile(makeFile('video.mp4'))).toBe(true);
+    expect(await validateFile(makeFile('audio.m4a'))).toBe(true);
+    expect(await validateFile(makeFile('ringtone.m4r'))).toBe(true);
+    expect(await validateFile(makeFile('track.ogg'))).toBe(true);
+    expect(await validateFile(makeFile('lossless.flac'))).toBe(true);
+    expect(await validateFile(makeFile('clip.mov'))).toBe(true);
+  });
+
+  test('extension check is case-insensitive', async () => {
+    expect(await validateFile(makeFile('SONG.MP3'))).toBe(true);
+    expect(await validateFile(makeFile('Video.MP4'))).toBe(true);
+  });
+
+  test('rejects unknown extension with no recognisable magic bytes', async () => {
+    expect(await validateFile(makeFile('file.xyz', [0x00, 0x01, 0x02, 0x03]))).toBe(false);
+    expect(await validateFile(makeFile('data.bin', [0xDE, 0xAD, 0xBE, 0xEF]))).toBe(false);
+  });
+
+  test('accepts OGG via magic bytes (OggS)', async () => {
+    // OGG capture pattern: 0x4F 0x67 0x67 0x53
+    expect(await validateFile(makeFile('unknown', [0x4F, 0x67, 0x67, 0x53]))).toBe(true);
+  });
+
+  test('accepts FLAC via magic bytes (fLaC)', async () => {
+    // FLAC marker: 0x66 0x4C 0x61 0x43
+    expect(await validateFile(makeFile('unknown', [0x66, 0x4C, 0x61, 0x43]))).toBe(true);
+  });
+
+  test('accepts MP4/M4A via ftyp box at offset 4', async () => {
+    // Bytes 4-7 are 'ftyp' (0x66 0x74 0x79 0x70)
+    const bytes = [0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70];
+    expect(await validateFile(makeFile('unknown', bytes))).toBe(true);
+  });
+
+  test('accepts MP3 via frame sync bytes (0xff 0xe0+)', async () => {
+    expect(await validateFile(makeFile('unknown', [0xff, 0xe0, 0x00, 0x00]))).toBe(true);
+    expect(await validateFile(makeFile('unknown', [0xff, 0xfb, 0xc0, 0x00]))).toBe(true);
+  });
+
+  test('returns false gracefully for null or undefined', async () => {
+    expect(await validateFile(null)).toBe(false);
+    expect(await validateFile(undefined)).toBe(false);
+  });
+
+  test('returns false for file with no extension and no magic bytes', async () => {
+    expect(await validateFile(makeFile('noextension', [0x00, 0x00, 0x00, 0x00]))).toBe(false);
   });
 });

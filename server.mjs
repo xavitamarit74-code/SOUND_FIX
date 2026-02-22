@@ -3,6 +3,73 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { exec } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+
+// ---------------------------------------------------------------------------
+// In-memory export store: POST /api/export  →  GET /api/export/:token
+// Tokens expire after 2 minutes so they don't accumulate.
+// ---------------------------------------------------------------------------
+const exportStore = new Map(); // token → { buf, filename, mime, expiresAt }
+const EXPORT_TTL_MS = 2 * 60 * 1000;
+
+function storeExport(buf, filename, mime) {
+  const token = randomBytes(16).toString('hex');
+  exportStore.set(token, { buf, filename, mime, expiresAt: Date.now() + EXPORT_TTL_MS });
+  // Lazy cleanup
+  setTimeout(() => exportStore.delete(token), EXPORT_TTL_MS + 1000);
+  return token;
+}
+
+// Exported for unit tests
+export function getExportEntry(token) {
+  const entry = exportStore.get(token);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) { exportStore.delete(token); return null; }
+  return entry;
+}
+
+async function handleExportPost(req, res) {
+  const url = new URL(req.url, 'http://localhost');
+  const filename = url.searchParams.get('filename') || 'output';
+  const mime = url.searchParams.get('mime') || 'application/octet-stream';
+
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  const buf = Buffer.concat(chunks);
+
+  if (buf.length === 0) {
+    res.statusCode = 400;
+    res.end(JSON.stringify({ error: 'Empty body' }));
+    return;
+  }
+
+  const token = storeExport(buf, filename, mime);
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.statusCode = 200;
+  res.end(JSON.stringify({ token, url: `/api/export/${token}` }));
+}
+
+function handleExportGet(req, res, token) {
+  const entry = getExportEntry(token);
+  if (!entry) {
+    res.statusCode = 404;
+    res.end(JSON.stringify({ error: 'Not found or expired' }));
+    return;
+  }
+
+  // Sanitise filename for Content-Disposition
+  const safe = entry.filename.replace(/[^\w.\-()\[\] ]/g, '_');
+  res.setHeader('Content-Type', entry.mime);
+  res.setHeader('Content-Disposition', `attachment; filename="${safe}"`);
+  res.setHeader('Content-Length', entry.buf.length);
+  // Remove COOP/COEP so the response is not treated as a cross-origin-isolated
+  // document, but KEEP Cross-Origin-Resource-Policy: same-origin so the parent
+  // page's COEP: require-corp allows this same-origin iframe navigation.
+  res.removeHeader('Cross-Origin-Opener-Policy');
+  res.removeHeader('Cross-Origin-Embedder-Policy');
+  res.statusCode = 200;
+  res.end(entry.buf);
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -61,7 +128,7 @@ function safeResolve(urlPath) {
   return absPath;
 }
 
-const server = http.createServer(async (req, res) => {
+export const server = http.createServer(async (req, res) => {
   try {
     setSecurityHeaders(res);
 
@@ -70,6 +137,21 @@ const server = http.createServer(async (req, res) => {
       res.end('Bad Request');
       return;
     }
+
+    const urlPath = req.url.split('?')[0];
+
+    // ── Export API ──────────────────────────────────────────────────────────
+    if (urlPath === '/api/export' && req.method === 'POST') {
+      await handleExportPost(req, res);
+      return;
+    }
+
+    const exportTokenMatch = urlPath.match(/^\/api\/export\/([a-f0-9]{32})$/);
+    if (exportTokenMatch && req.method === 'GET') {
+      handleExportGet(req, res, exportTokenMatch[1]);
+      return;
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     const filePath = safeResolve(req.url);
     if (!filePath) {
@@ -98,9 +180,13 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  const url = `http://localhost:${PORT}`;
-  console.log(`Dev server running at ${url}`);
-  console.log('COOP/COEP enabled (crossOriginIsolated should be true).');
-  openBrowser(url);
-});
+// Only start listening when run directly (not when imported in tests)
+const __isMain = fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (__isMain) {
+  server.listen(PORT, () => {
+    const url = `http://localhost:${PORT}`;
+    console.log(`Dev server running at ${url}`);
+    console.log('COOP/COEP enabled (crossOriginIsolated should be true).');
+    openBrowser(url);
+  });
+}
